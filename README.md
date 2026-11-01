@@ -1,70 +1,50 @@
-# GitHub Codespaces ♥️ React
+# CarWash Connect
 
-Welcome to your shiny new Codespace running React! We've got everything fired up and running for you to explore React.
+Responsive React app for discovering car-wash stations, booking a service slot, viewing invoices, and tracking wash updates. It runs on the web and can be packaged for iOS and Android with Capacitor.
 
-You've got a blank canvas to work on from a git perspective as well. There's a single initial commit with the what you're seeing right now - where you go from here is up to you!
+## Firebase and Firestore setup
 
-Everything you do here is contained within this one codespace. There is no repository on GitHub yet. If and when you’re ready you can click "Publish Branch" and we’ll create your repository and push up your project. If you were just exploring then and have no further need for this code then you can simply delete your codespace and it's gone forever.
+1. Create a Firebase project, register a Web app, and create its Cloud Firestore database.
+2. In Firebase Authentication, enable **Anonymous** sign-in.
+3. Copy `.env.example` to `.env.local` and replace each placeholder with the Firebase Web app configuration. These Firebase client settings identify the project; never put service-account keys or other Admin SDK credentials in a `VITE_` variable.
+4. Install the Firebase CLI if needed, authenticate, select the project, and deploy the database rules:
 
-This project was bootstrapped for you with [Vite](https://vitejs.dev/).
+   ```sh
+   firebase login
+   firebase use --add
+   firebase deploy --only firestore:rules,firestore:indexes
+   ```
 
-## Available Scripts
+5. Start with `npm run start`. On first authenticated launch, the app creates the three built-in station documents if they do not already exist. Firestore collections used by the app:
 
-In the project directory, you can run:
+   | Collection | Purpose |
+   | --- | --- |
+   | `stations/{stationId}` | Published station details, prices in cents, services, and availability |
+   | `bookings/{bookingId}` | Customer, vehicle, reserved date/time, station, status, and wash stage |
+   | `invoices/{bookingId}` | Itemized service/tax/total in cents and payment status |
+   | `bookings/{bookingId}/updates/{updateId}` | Customer-visible technician updates and optional bay photo URLs |
 
-### `npm start`
+Bookings and their unpaid invoices are written atomically. Customers can only read their own bookings, invoices, and updates. Built-in stations can only be created with their fixed seed data; managing other stations and posting service updates requires the `admin: true` Firebase Authentication custom claim. The Station Admin switch in the UI is not an authorization mechanism. Assign custom claims only from a trusted server using the Firebase Admin SDK.
 
-We've already run this for you in the `Codespaces: server` terminal window below. If you need to stop the server for any reason you can just run `npm start` again to bring it back online.
+Anonymous accounts are local to the browser or app installation; they do not let a customer carry bookings across devices. Add account linking or a sign-in provider before production if cross-device access is needed.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000/](http://localhost:3000/) in the built-in Simple Browser (`Cmd/Ctrl + Shift + P > Simple Browser: Show`) to view your running application.
+The Pay button currently reports that payment is unavailable and leaves the invoice unpaid. No payment is processed or recorded as paid; integrate a payment provider through a trusted backend before enabling real payments.
 
-The page will reload automatically when you make changes.\
-You may also see any lint errors in the console.
+If Firebase is not configured, the app displays a demo preview and blocks booking writes rather than implying that demo data has been saved. Firebase configuration is compiled into web/native builds, so set the environment values before building.
 
-### `npm test`
+## Web, iOS, and Android
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+The web app is also a Progressive Web App: deploy the `dist` directory to an HTTPS host. On iOS, use Safari's **Share → Add to Home Screen**; on Android and desktop browsers, use the browser's **Install app** action.
 
-### `npm run build`
+To build native apps, install Xcode for iOS (macOS only) and Android Studio with the Android SDK, then run:
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+```sh
+npm install
+npm run cap:sync
+npm run cap:ios      # macOS only
+npm run cap:android
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+Set Firebase environment variables before `npm run cap:sync`; the generated native apps embed the same Firebase-connected web build. Generate or refresh app icons with `npm run assets:generate`.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-## Learn More
-
-You can learn more in the [Vite documentation](https://vitejs.dev/guide/).
-
-To learn Vitest, a Vite-native testing framework, go to [Vitest documentation](https://vitest.dev/guide/)
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://sambitsahoo.com/blog/vite-code-splitting-that-works.html](https://sambitsahoo.com/blog/vite-code-splitting-that-works.html)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://github.com/btd/rollup-plugin-visualizer#rollup-plugin-visualizer](https://github.com/btd/rollup-plugin-visualizer#rollup-plugin-visualizer)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://dev.to/hamdankhan364/simplifying-progressive-web-app-pwa-development-with-vite-a-beginners-guide-38cf](https://dev.to/hamdankhan364/simplifying-progressive-web-app-pwa-development-with-vite-a-beginners-guide-38cf)
-
-### Advanced Configuration
-
-This section has moved here: [https://vitejs.dev/guide/build.html#advanced-base-options](https://vitejs.dev/guide/build.html#advanced-base-options)
-
-### Deployment
-
-This section has moved here: [https://vitejs.dev/guide/build.html](https://vitejs.dev/guide/build.html)
-
-### Troubleshooting
-
-This section has moved here: [https://vitejs.dev/guide/troubleshooting.html](https://vitejs.dev/guide/troubleshooting.html)
+The wash-foam update photo (`public/car-wash-foam.jpg`) is by 3268zauber and is licensed under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/).

@@ -1,0 +1,167 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function stationAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
+    function starterStation(stationId) {
+      return signedIn() && (
+        (stationId == 'aqua-glow' && request.resource.data == {
+          'name': 'AquaGlow Auto Spa',
+          'location': 'Downtown',
+          'distance': '1.2 miles',
+          'rating': 4.9,
+          'reviews': 184,
+          'priceCents': 2900,
+          'availability': 'Open until 8:00 PM',
+          'services': ['Ceramic Coating', 'Detail Station', 'Eco Steam', 'Express Wash'],
+          'active': true
+        })
+        || (stationId == 'crystal-clear' && request.resource.data == {
+          'name': 'Crystal Clear Car Care',
+          'location': 'Riverside',
+          'distance': '2.6 miles',
+          'rating': 4.8,
+          'reviews': 126,
+          'priceCents': 2400,
+          'availability': 'Open until 7:00 PM',
+          'services': ['Detail Station', 'Eco Steam', 'Express Wash'],
+          'active': true
+        })
+        || (stationId == 'shine-lab' && request.resource.data == {
+          'name': 'The Shine Lab',
+          'location': 'Westside',
+          'distance': '3.4 miles',
+          'rating': 4.9,
+          'reviews': 98,
+          'priceCents': 3900,
+          'availability': 'Next slot at 3:30 PM',
+          'services': ['Ceramic Coating', 'Detail Station'],
+          'active': true
+        })
+      );
+    }
+
+    function validBooking(data, bookingId) {
+      let station = get(/databases/$(database)/documents/stations/$(data.stationId)).data;
+      let invoice = getAfter(/databases/$(database)/documents/invoices/$(bookingId)).data;
+      return data.keys().hasAll([
+          'ownerUid', 'stationId', 'stationName', 'customer', 'vehicleModel',
+          'plate', 'serviceName', 'date', 'time', 'status', 'currentStage',
+          'servicePriceCents', 'taxCents', 'totalCents', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerUid', 'stationId', 'stationName', 'customer', 'vehicleModel',
+          'plate', 'serviceName', 'date', 'time', 'status', 'currentStage',
+          'servicePriceCents', 'taxCents', 'totalCents', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerUid == request.auth.uid
+        && data.stationId is string
+        && station.active == true
+        && data.stationName == station.name
+        && data.customer is string
+        && data.customer.size() > 0
+        && data.customer.size() <= 100
+        && data.vehicleModel is string
+        && data.vehicleModel.size() > 0
+        && data.vehicleModel.size() <= 100
+        && data.plate is string
+        && data.plate.size() > 0
+        && data.plate.size() <= 20
+        && data.serviceName == 'Express Wash & Vacuum'
+        && data.date is string
+        && data.time is string
+        && data.status == 'pending'
+        && data.currentStage == -1
+        && data.servicePriceCents is int
+        && data.servicePriceCents == station.priceCents
+        && data.taxCents is int
+        && data.taxCents * 100 == data.servicePriceCents * 8
+        && data.totalCents is int
+        && data.totalCents == data.servicePriceCents + data.taxCents
+        && data.createdAt == request.time
+        && data.updatedAt == request.time
+        && invoice.bookingId == bookingId
+        && invoice.ownerUid == data.ownerUid
+        && invoice.stationId == data.stationId
+        && invoice.stationName == data.stationName
+        && invoice.servicePriceCents == data.servicePriceCents
+        && invoice.taxCents == data.taxCents
+        && invoice.totalCents == data.totalCents;
+    }
+
+    function validInvoice(data, invoiceId) {
+      let booking = getAfter(/databases/$(database)/documents/bookings/$(invoiceId)).data;
+      return data.keys().hasAll([
+          'bookingId', 'ownerUid', 'stationId', 'stationName', 'customer',
+          'vehicleModel', 'plate', 'serviceName', 'servicePriceCents',
+          'taxCents', 'totalCents', 'paymentStatus', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'bookingId', 'ownerUid', 'stationId', 'stationName', 'customer',
+          'vehicleModel', 'plate', 'serviceName', 'servicePriceCents',
+          'taxCents', 'totalCents', 'paymentStatus', 'createdAt'
+        ])
+        && data.bookingId == invoiceId
+        && data.ownerUid == request.auth.uid
+        && booking.ownerUid == data.ownerUid
+        && data.stationId == booking.stationId
+        && data.stationName == booking.stationName
+        && data.customer == booking.customer
+        && data.vehicleModel == booking.vehicleModel
+        && data.plate == booking.plate
+        && data.serviceName == booking.serviceName
+        && data.servicePriceCents is int
+        && data.servicePriceCents == booking.servicePriceCents
+        && data.taxCents is int
+        && data.taxCents == booking.taxCents
+        && data.totalCents == data.servicePriceCents + data.taxCents
+        && data.totalCents == booking.totalCents
+        && data.paymentStatus == 'unpaid'
+        && data.createdAt == request.time;
+    }
+
+    match /stations/{stationId} {
+      allow get: if resource == null
+        || resource.data.active == true
+        || stationAdmin()
+        || stationId in ['aqua-glow', 'crystal-clear', 'shine-lab'];
+      allow list: if resource.data.active == true || stationAdmin();
+      allow create: if starterStation(stationId) || stationAdmin();
+      allow update, delete: if stationAdmin();
+    }
+
+    match /bookings/{bookingId} {
+      allow create: if signedIn() && validBooking(request.resource.data, bookingId);
+      allow get, list: if signedIn()
+        && (resource.data.ownerUid == request.auth.uid || stationAdmin());
+      allow update: if stationAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'currentStage', 'updatedAt']);
+      allow delete: if false;
+
+      match /updates/{updateId} {
+        function ownsBooking() {
+          return signedIn()
+            && get(/databases/$(database)/documents/bookings/$(bookingId)).data.ownerUid == request.auth.uid;
+        }
+
+        allow get, list: if ownsBooking() || stationAdmin();
+        allow create, update, delete: if stationAdmin();
+      }
+    }
+
+    match /invoices/{invoiceId} {
+      allow create: if signedIn() && validInvoice(request.resource.data, invoiceId);
+      allow get, list: if signedIn()
+        && (resource.data.ownerUid == request.auth.uid || stationAdmin());
+      allow update, delete: if false;
+    }
+  }
+}
